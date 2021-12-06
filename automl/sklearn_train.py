@@ -20,8 +20,7 @@ def train_model(context: MLClientCtx,
                 artifacts: List[str] = [],
                 save_format: str = 'pkl',
                 ):
-    
-    print(type(dataset))
+
     # set model config file
     model_config = gen_sklearn_model(model_class, context.parameters.items())
     
@@ -33,12 +32,10 @@ def train_model(context: MLClientCtx,
     X = dataset.loc[:, dataset.columns != label_column]
     y = dataset[label_column]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
-    
           
     # Update config with the new split
     model_config["FIT"].update({"X": X_train, "y": y_train.values})
 
-    
     #?
     model_class = create_class(model_config["META"]["class"])
     

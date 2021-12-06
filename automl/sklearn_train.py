@@ -5,7 +5,7 @@ from mlrun.mlutils.models import gen_sklearn_model
 from mlrun.utils.helpers import create_class
 from mlrun.artifacts.model import ModelArtifact
 from sklearn.model_selection import train_test_split
-from mlrun.frameworks.sklearn import apply_mlrun\
+from mlrun.frameworks.sklearn import apply_mlrun
 
 import mlrun
 import warnings
@@ -13,12 +13,12 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 def train_model(context: MLClientCtx,
                 dataset: DataItem,
-                label_column: str,
-                test_size: float,
                 model_class: str,
                 model_name: str,
+                label_column: str = 'label',
+                test_size: float = 0.2,
                 artifacts: List[str] = [],
-                save_format: str = '',
+                save_format: str = 'pkl',
                 ):
     
     print(type(dataset))

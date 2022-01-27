@@ -1,44 +1,19 @@
-from typing import Union
-from mlrun.artifacts import get_model
-from cloudpickle import load
-from typing import List
-from mlrun.execution import MLClientCtx
-from mlrun.datastore import DataItem
-from mlrun.utils.helpers import create_class
-from mlrun.artifacts.model import ModelArtifact
-from sklearn.model_selection import train_test_split
-from mlrun.frameworks.sklearn import apply_mlrun
-from sklearn.metrics import accuracy_score
-from cloudpickle import dumps
-from importlib import import_module
 import mlrun
 import warnings
-import numpy as np
+import json
+
+from typing import List
+from sklearn.model_selection import train_test_split
+from importlib import import_module
 from inspect import _empty, signature
-import warnings
-import xgboost as xgb
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
-
-from mlrun.mlutils.data import get_sample, get_splits
-from mlrun.mlutils.models import gen_sklearn_model, eval_model_v2
 from mlrun.utils.helpers import create_class
-
 from mlrun.execution import MLClientCtx
 from mlrun.datastore import DataItem
-
-from cloudpickle import dumps
-import pandas as pd
-import os
-from typing import Union
-from sklearn.metrics import mean_squared_error
-
-
 from mlrun.frameworks.auto_mlrun import AutoMLRun
-
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.filterwarnings("ignore")
+
 
 def create_class(pkg_class: str):
     """Create a class from a package.module.class string
@@ -158,7 +133,7 @@ def _gen_sklearn_model(model_pkg, skparams):
 
     # we used to use skparams as is (without .items()) so supporting both cases for backwards compatibility
     skparams = skparams.items() if isinstance(skparams, dict) else skparams
-    
+
     for k, v in skparams:
         if k.startswith("CLASS_"):
             model_config["CLASS"][k[6:]] = v
@@ -173,45 +148,47 @@ def _gen_model_configuration(model_pkg, model_params):
     Generate a model configuration
     input can be either a "package.module.class" or a json file
     """
-    if 'sklearn' in model_pkg:
+    if "sklearn" in model_pkg:
         model_config = _gen_sklearn_model(model_pkg, model_params)
-    
-    elif 'xgb' in model_pkg:
+
+    elif "xgb" in model_pkg:
         model_config = _gen_xgb_model(model_pkg, model_params)
 
-    elif 'lgbm' in model_pkg:
+    elif "lgbm" in model_pkg:
         model_config = _gen_lgbm_model(model_pkg, model_params)
-    
+
     else:
-        raise AttributeError('The model passed does not belong to sklearn, xgb, or lgbm')
+        raise AttributeError(
+            "The model passed does not belong to sklearn, xgb, or lgbm"
+        )
     return model_config
 
 
+def train(
+    context: MLClientCtx,
+    dataset: DataItem,
+    model_class: str,
+    label_column: str = "label",
+    model_name: str = "trained_model",
+    test_size: float = 0.2,
+    artifacts: List[str] = [],
+    save_format: str = "pkl",
+):
+    """ """
 
-def train(context: MLClientCtx,
-          dataset: DataItem,
-          model_class: str,
-          label_column: str = 'label',
-          model_name: str = 'trained_model',
-          test_size: float = 0.2,
-          artifacts: List[str] = [],
-          save_format: str = 'pkl'):
-    
-    """
-    """
-    
     # Set model config file
     model_config = _gen_model_configuration(model_class, context.parameters.items())
 
     # Pull DataFrame from DataItem
-    dataset = dataset.as_df() if type(dataset) == mlrun.datastore.base.DataItem else dataset
-    
+    dataset = (
+        dataset.as_df() if type(dataset) == mlrun.datastore.base.DataItem else dataset
+    )
+
     # Split according to test_size
     X = dataset[dataset.columns[dataset.columns != label_column]]
     y = dataset[label_column]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
-    
 
     # Update config with the new split
     model_config["FIT"].update({"X": X_train, "y": y_train})
@@ -219,47 +196,52 @@ def train(context: MLClientCtx,
     # ?
     model_class = create_class(model_config["META"]["class"])
     model = model_class(**model_config["CLASS"])
-    
+
     # Wrap our model with Mlrun features, specify the test dataset for analysis and accuracy measurements
     AutoMLRun.apply_mlrun(
         model=model, context=context, x_validation=X_test, y_validation=y_test
     )
-    
+
     # Train our model
     model.fit(model_config["FIT"]["X"], model_config["FIT"]["y"])
 
-    
-def evaluate(context: MLClientCtx,
-             dataset: DataItem,
-             model_path: str,
-             artifacts: List[str],
-             label_column: str = 'label'):
-    
+
+def evaluate(
+    context: MLClientCtx,
+    dataset: DataItem,
+    model_path: str,
+    artifacts: List[str],
+    label_column: str = "label",
+):
     # Pull DataFrame from DataItem
-    dataset = dataset.as_df() if type(dataset) == mlrun.datastore.base.DataItem else dataset
-    
+    dataset = (
+        dataset.as_df() if type(dataset) == mlrun.datastore.base.DataItem else dataset
+    )
+
     model_handler = AutoMLRun.load_model(model_path)
-    
+
     X_test = dataset[dataset.columns[dataset.columns != label_column]]
     y_test = dataset[label_column]
 
     AutoMLRun.apply_mlrun(model_handler.model, y_test=y_test, model_path=model_path)
-    
-    model_handler.model.predict(X_test)
-    
 
-    
-def predict(context: MLClientCtx,
-             dataset: DataItem,
-             model_path: str,
-             artifacts: List[str],
-             label_column: str = None):
-    
+    model_handler.model.predict(X_test)
+
+
+def predict(
+    context: MLClientCtx,
+    dataset: DataItem,
+    model_path: str,
+    artifacts: List[str],
+    label_column: str = None,
+):
     # Pull DataFrame from DataItem
-    dataset = dataset.as_df() if type(dataset) == mlrun.datastore.base.DataItem else dataset
-    
+    dataset = (
+        dataset.as_df() if type(dataset) == mlrun.datastore.base.DataItem else dataset
+    )
+
     if label_column:
         dataset = dataset[dataset.columns[dataset.columns != label_column]]
-        
+
     model_handler = AutoMLRun.load_model(model_path)
     model_handler.model.predict(dataset)
